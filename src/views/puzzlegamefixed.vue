@@ -217,8 +217,8 @@ export default {
       // 获取被拖动的拼图块
       const piece = this.puzzlePieces[index]
       
-      // 只拖动当前选中的拼图块
-      this.draggedPieces = [piece]
+      // 找出所有与当前拼图块相连且相对位置正确的拼图块
+      this.draggedPieces = this.findConnectedPieces(piece)
       
       // 标记所有被拖动的拼图块
       this.draggedPieces.forEach(p => {
@@ -264,19 +264,35 @@ export default {
       const deltaX = clientX - this.dragStartX
       const deltaY = clientY - this.dragStartY
 
-      // 移动被拖动的拼图块
+      // 计算整个拼图块组的边界
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
       this.draggedPieces.forEach(piece => {
         const newX = piece.dragStartX + deltaX
         const newY = piece.dragStartY + deltaY
-        // 限制拖动范围在拼图板内
-        piece.currentX = Math.max(0, Math.min(this.boardWidth - this.pieceWidth, newX))
-        piece.currentY = Math.max(0, Math.min(this.boardHeight - this.pieceHeight, newY))
+        minX = Math.min(minX, newX)
+        minY = Math.min(minY, newY)
+        maxX = Math.max(maxX, newX)
+        maxY = Math.max(maxY, newY)
 
         
 
       })
 
+      // 计算需要调整的偏移量，确保整个拼图块组都在拼图板内
+      let adjustedDeltaX = deltaX
+      let adjustedDeltaY = deltaY
+      if (minX < 0) adjustedDeltaX -= minX
+      if (minY < 0) adjustedDeltaY -= minY
+      if (maxX > this.boardWidth - this.pieceWidth) adjustedDeltaX -= (maxX - (this.boardWidth - this.pieceWidth))
+      if (maxY > this.boardHeight - this.pieceHeight) adjustedDeltaY -= (maxY - (this.boardHeight - this.pieceHeight))
 
+      // 移动所有被拖动的拼图块
+      this.draggedPieces.forEach(piece => {
+        const newX = piece.dragStartX + adjustedDeltaX
+        const newY = piece.dragStartY + adjustedDeltaY
+        piece.currentX = newX
+        piece.currentY = newY
+      })
 
       // 更新拼图块状态
       this.draggedPieces.forEach(piece => {
@@ -287,8 +303,21 @@ export default {
     stopDrag() {
       if (!this.isDragging || this.draggedPieces.length === 0) return
 
-      // 对每个被拖动的拼图块进行处理
+      // 收集所有被拖动拼图块的目标位置
+      const targetPositions = []
       this.draggedPieces.forEach(piece => {
+        // 计算最近的网格位置
+        const nearestX = Math.round(piece.currentX / this.pieceWidth) * this.pieceWidth
+        const nearestY = Math.round(piece.currentY / this.pieceHeight) * this.pieceHeight
+        targetPositions.push({
+          piece: piece,
+          targetX: nearestX,
+          targetY: nearestY
+        })
+      })
+
+      // 对每个被拖动的拼图块进行处理
+      targetPositions.forEach(({ piece, targetX, targetY }) => {
         // 计算最近的网格位置
         const nearestX = Math.round(piece.currentX / this.pieceWidth) * this.pieceWidth
         const nearestY = Math.round(piece.currentY / this.pieceHeight) * this.pieceHeight
@@ -306,20 +335,21 @@ export default {
           const originalY = piece.dragStartY
         
           // 保存目标位置拼图块的当前位置
-          const targetX = pieceAtPosition.currentX
-          const targetY = pieceAtPosition.currentY
+          const currentX = pieceAtPosition.currentX
+          const currentY = pieceAtPosition.currentY
           
           // 将目标位置拼图块移动到被拖动拼图块的原始位置
           pieceAtPosition.currentX = originalX
           pieceAtPosition.currentY = originalY
+          pieceAtPosition.isCorrect = pieceAtPosition.currentX === pieceAtPosition.correctX && pieceAtPosition.currentY === pieceAtPosition.correctY
           
           // 将被拖动拼图块移动到目标位置
-          piece.currentX = targetX
-          piece.currentY = targetY
+          piece.currentX = currentX
+          piece.currentY = currentY
         } else {
           // 如果该位置为空，则移动到该位置
-          piece.currentX = nearestX
-          piece.currentY = nearestY
+          piece.currentX = targetX
+          piece.currentY = targetY
         }
 
         // 更新是否正确
@@ -328,10 +358,9 @@ export default {
           pieceAtPosition.isCorrect = pieceAtPosition.currentX === pieceAtPosition.correctX && pieceAtPosition.currentY === pieceAtPosition.correctY
         }
         
-        // 检查拼图块是否在正确位置
-        piece.isCorrect = piece.currentX === piece.correctX && piece.currentY === piece.correctY
+
         
-        // 吸附功能已移除
+
         
 
       })
@@ -420,6 +449,7 @@ export default {
     findConnectedPieces(piece) {
       const connectedPieces = [piece]
       const checkedPieces = new Set([piece.id])
+      const tolerance = 5 // 容差，用于处理浮点数精度问题
       
       const checkNeighbors = (currentPiece) => {
         // 检查四个方向的邻居
@@ -437,8 +467,8 @@ export default {
           
           // 找到在当前位置的拼图块
           const neighborPiece = this.puzzlePieces.find(p => 
-            Math.abs(p.currentX - neighborCurrentX) < 1 && 
-            Math.abs(p.currentY - neighborCurrentY) < 1 &&
+            Math.abs(p.currentX - neighborCurrentX) < tolerance && 
+            Math.abs(p.currentY - neighborCurrentY) < tolerance &&
 
             !checkedPieces.has(p.id)
           )
@@ -457,13 +487,10 @@ export default {
             const isXCorrect = Math.abs(correctRelativeX - actualRelativeX) < tolerance
             const isYCorrect = Math.abs(correctRelativeY - actualRelativeY) < tolerance
             
-            // 检查方向是否正确
-            const isDirectionCorrect = 
-              (correctRelativeX === 0 && actualRelativeX === 0) ||
-              (correctRelativeY === 0 && actualRelativeY === 0)
 
-            // 只有当相对位置和方向都正确时，才将其添加到连接的拼图块列表中
-            if (isXCorrect && isYCorrect && isDirectionCorrect) {
+
+            // 只有当相对位置正确时，才将其添加到连接的拼图块列表中
+            if (isXCorrect && isYCorrect) {
               checkedPieces.add(neighborPiece.id)
               connectedPieces.push(neighborPiece)
               checkNeighbors(neighborPiece)
