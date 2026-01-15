@@ -357,12 +357,6 @@ export default {
         if (pieceAtPosition) {
           pieceAtPosition.isCorrect = pieceAtPosition.currentX === pieceAtPosition.correctX && pieceAtPosition.currentY === pieceAtPosition.correctY
         }
-        
-
-        
-
-        
-
       })
 
       // 重置拖动状态
