@@ -6,7 +6,7 @@ import Settings from '../views/settings.vue'
 import Reports from '../views/reports.vue'
 import Documents from '../views/documents.vue'
 import Help from '../views/help.vue'
-import PuzzleGame from '../views/puzzlegamefixed.vue'
+import PuzzleGame from '../views/puzzlegame.vue'
 
 const routes = [
   {
