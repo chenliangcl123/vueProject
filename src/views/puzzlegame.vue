@@ -301,7 +301,11 @@ export default {
           el.style.transform = ''
         }
       })
-      this.touchedTile = null
+
+      // 使用nextTick确保DOM更新后再清除touchedTile
+      this.$nextTick(() => {
+        this.touchedTile = null
+      })
     },
 
     // 获取指定位置上的拼图块
@@ -341,7 +345,8 @@ export default {
         top: tile.currentRow * this.tileSize + 'px',
         backgroundImage: `url(${this.imageSrc})`,
         backgroundSize: `${this.boardSize}px ${this.boardSize}px`,
-        backgroundPosition: `-${tile.originalCol * this.tileSize}px -${tile.originalRow * this.tileSize}px`
+        backgroundPosition: `-${tile.originalCol * this.tileSize}px -${tile.originalRow * this.tileSize}px`,
+        transform: tile === this.touchedTile ? undefined : ''
       }
     },
 
