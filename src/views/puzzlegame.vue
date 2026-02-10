@@ -35,6 +35,7 @@
         }"
         :style="getTileStyle(tile)"
         :draggable="!isWin"
+        :data-index="index"
         @dragstart="handleDragStart(tile, $event)"
         @dragover.prevent="handleDragOver(tile)"
         @dragleave="handleDragLeave"
@@ -216,10 +217,43 @@ export default {
       this.touchedTile = tile
       this.touchStartX = event.touches[0].clientX
       this.touchStartY = event.touches[0].clientY
+
+      // 添加拖拽样式
+      const element = event.target
+      if (element && element.classList.contains('tile')) {
+        element.classList.add('dragging')
+      }
     },
 
     handleTouchMove(tile, event) {
+      if (!this.touchedTile) {
+        return
+      }
       event.preventDefault()
+
+      // 获取当前触摸位置
+      const touch = event.touches[0]
+      const element = document.elementFromPoint(touch.clientX, touch.clientY)
+
+      // 查找被触摸的拼图块
+      if (element && element.classList.contains('tile')) {
+        // 获取该拼图块的索引
+        const tileIndex = parseInt(element.getAttribute('data-index'))
+
+        // 找到对应的拼图块对象
+        const targetTile = this.tiles[tileIndex]
+
+        if (targetTile && targetTile !== this.touchedTile) {
+          // 清除之前的拖拽目标样式
+          this.tiles.forEach(t => {
+            const el = document.querySelector(`.tile[data-index="${this.tiles.indexOf(t)}"]`)
+            if (el) el.classList.remove('drag-over')
+          })
+
+          // 添加拖拽目标样式
+          element.classList.add('drag-over')
+        }
+      }
     },
 
     handleTouchEnd(event) {
@@ -227,56 +261,33 @@ export default {
         return
       }
 
-      const touchEndX = event.changedTouches[0].clientX
-      const touchEndY = event.changedTouches[0].clientY
+      // 获取触摸结束位置
+      const touch = event.changedTouches[0]
+      const element = document.elementFromPoint(touch.clientX, touch.clientY)
 
-      const deltaX = touchEndX - this.touchStartX
-      const deltaY = touchEndY - this.touchStartY
+      // 查找被触摸的拼图块
+      if (element && element.classList.contains('tile')) {
+        const tileIndex = parseInt(element.getAttribute('data-index'))
+        const targetTile = this.tiles[tileIndex]
 
-      const absDeltaX = Math.abs(deltaX)
-      const absDeltaY = Math.abs(deltaY)
+        if (targetTile && targetTile !== this.touchedTile) {
+          // 交换拼图块
+          this.swapTiles(this.touchedTile, targetTile)
 
-      // 判断滑动方向
-      if (absDeltaX > absDeltaY) {
-        // 水平滑动
-        if (absDeltaX > 30) {
-          const targetCol = deltaX > 0 
-            ? this.touchedTile.currentCol + 1 
-            : this.touchedTile.currentCol - 1
-          const targetRow = this.touchedTile.currentRow
-
-          // 检查目标位置是否在边界内
-          if (targetCol >= 0 && targetCol < this.difficulty) {
-            const targetTile = this.getTileAtPosition(targetRow, targetCol)
-            if (targetTile) {
-              this.swapTiles(this.touchedTile, targetTile)
-              if (this.checkWin()) {
-                this.handleWin()
-              }
-            }
-          }
-        }
-      } else {
-        // 垂直滑动
-        if (absDeltaY > 30) {
-          const targetRow = deltaY > 0 
-            ? this.touchedTile.currentRow + 1 
-            : this.touchedTile.currentRow - 1
-          const targetCol = this.touchedTile.currentCol
-
-          // 检查目标位置是否在边界内
-          if (targetRow >= 0 && targetRow < this.difficulty) {
-            const targetTile = this.getTileAtPosition(targetRow, targetCol)
-            if (targetTile) {
-              this.swapTiles(this.touchedTile, targetTile)
-              if (this.checkWin()) {
-                this.handleWin()
-              }
-            }
+          if (this.checkWin()) {
+            this.handleWin()
           }
         }
       }
 
+      // 清除所有样式
+      this.tiles.forEach(t => {
+        const el = document.querySelector(`.tile[data-index="${this.tiles.indexOf(t)}"]`)
+        if (el) {
+          el.classList.remove('dragging')
+          el.classList.remove('drag-over')
+        }
+      })
       this.touchedTile = null
     },
 
