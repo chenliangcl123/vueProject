@@ -1,65 +1,55 @@
 <template>
-  <div class="puzzle-game">
+  <div class="puzzle-container">
     <div class="header">
-      <h1>拼图游戏</h1>
+      <h1>快乐拼图</h1>
       <div class="controls">
-        <label for="image-upload" class="btn upload-btn">
-          <span>选择图片</span>
-          <input type="file" id="image-upload" @change="handleImageUpload" accept="image/*" style="display: none">
-        </label>
-        <select v-model="difficulty" class="difficulty-select" @change="resetGame">
-          <option value="3">简单 (3x3)</option>
-          <option value="4">中等 (4x4)</option>
-          <option value="5">困难 (5x5)</option>
-        </select>
-        <button class="btn reset-btn" @click="resetGame">重新开始</button>
-        <button class="btn back-btn" @click="goBack">返回首页</button>
-      </div>
-    </div>
-
-    <div class="game-container">
-      <div class="puzzle-area" v-if="imageLoaded">
-        <div class="puzzle-board" :style="{ width: boardWidth + 'px', height: boardHeight + 'px' }">
-          <!-- 拼图块 -->
-          <div
-            v-for="(piece, index) in puzzlePieces"
-            :key="piece.id"
-            class="puzzle-piece"
-            :class="{ 'correct': piece.isCorrect, 'dragging': piece.isDragging }"
-            :style="{
-              width: pieceWidth + 'px',
-              height: pieceHeight + 'px',
-              backgroundImage: 'url(' + imageUrl + ')',
-              backgroundPosition: piece.backgroundPosition,
-              backgroundSize: boardWidth + 'px ' + boardHeight + 'px',
-              left: piece.currentX + 'px',
-              top: piece.currentY + 'px',
-              opacity: piece.isDragging ? 0.9 : 1,
-              zIndex: getPieceZIndex(piece),
-              transition: piece.isDragging ? 'none' : 'all 0.3s ease'
-            }"
-            @mousedown="startDrag($event, index)"
-            @touchstart="startDrag($event, index)"
-            @dragstart="handleDragStart()"
-            draggable="false"
-          ></div>
+        <div class="difficulty-selector">
+          <label>难度:</label>
+          <select v-model="difficulty" @change="resetGame">
+            <option value="5">简单 (5x5)</option>
+            <option value="9">中等 (9x9)</option>
+            <option value="10">困难 (10x10)</option>
+          </select>
         </div>
-      </div>
-
-      <div class="preview-area" v-if="imageLoaded">
-        <h3>原图预览</h3>
-        <img :src="imageUrl" alt="原图" class="preview-image">
-      </div>
-
-      <div class="no-image" v-if="!imageLoaded">
-        <p>请选择一张图片开始游戏</p>
+        <button @click="resetGame" class="reset-btn">重新开始</button>
+        <button @click="nextLevel" class="next-level-btn">下一关</button>
       </div>
     </div>
 
-    <div class="success-message" v-if="showSuccessMessage">
-      <div class="message-content">
-        <h2>🎉 恭喜您完成了拼图！</h2>
-        <button class="btn" @click="resetGame">再玩一次</button>
+    <div class="game-status" v-if="showPreview">
+      <p>请记住原图位置，{{ countdown }}秒后开始游戏...</p>
+    </div>
+
+    <div
+      class="puzzle-board"
+      :style="{ width: boardSize + 'px', height: boardSize + 'px' }"
+    >
+      <div
+        v-for="(tile, index) in tiles"
+        :key="index"
+        class="tile"
+        :class="{
+          dragging: draggedTile === tile,
+          'drag-over': isDragOver(tile),
+          'no-border': isWin
+        }"
+        :style="getTileStyle(tile)"
+        :draggable="!isWin"
+        @dragstart="handleDragStart(tile, $event)"
+        @dragover.prevent="handleDragOver(tile)"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop(tile)"
+        @touchstart="handleTouchStart(tile, $event)"
+        @touchmove="handleTouchMove(tile, $event)"
+        @touchend="handleTouchEnd($event)"
+      >
+      </div>
+    </div>
+
+    <div class="win-modal" v-if="isWin">
+      <div class="modal-content">
+        <h2>🎉 恭喜你完成了拼图!</h2>
+        <button @click="resetGame" class="play-again-btn">再玩一次</button>
       </div>
     </div>
   </div>
@@ -67,769 +57,535 @@
 
 <script>
 export default {
-  name: 'PuzzleGameFixedView',
+  name: 'PuzzleGame',
   data() {
     return {
-      imageUrl: '',
-      imageLoaded: false,
-      difficulty: 3,
-      boardWidth: 450,
-      boardHeight: 450,
-      puzzlePieces: [],
-      pieceWidth: 150,
-      pieceHeight: 150,
-      isDragging: false,
-      draggedPieceIndex: null,
-      draggedPieces: [],
-      dragStartX: 0,
-      dragStartY: 0,
-      pieceStartX: 0,
-      pieceStartY: 0,
-      isComplete: false,
-      placeholder: null,
-      showSuccessMessage: false,
-      successTimer: null,
-      tolerance: 5 // 容差常量
+      difficulty: 5,
+      tiles: [],
+      isWin: false,
+      imageSrc: '',
+      defaultImage: 'https://picsum.photos/600/600',
+      boardSize: 400,
+      tileSize: 0,
+      showPreview: true,
+      countdown: 3,
+      countdownInterval: null,
+      winCountdown: 3,
+      winCountdownInterval: null,
+      draggedTile: null,
+      dragOverTile: null,
+      touchedTile: null,
+      touchStartX: 0,
+      touchStartY: 0
     }
   },
-  computed: {
-    // 计算拼图板的总块数
-    totalPieces() {
-      return this.difficulty * this.difficulty
-    }
+  mounted() {
+    this.imageSrc = this.defaultImage
+    this.adjustBoardSize()
+    window.addEventListener('resize', this.adjustBoardSize)
+    this.resetGame()
   },
   beforeUnmount() {
-    // 组件销毁前清理定时器
-    if (this.successTimer) {
-      clearTimeout(this.successTimer)
-    }
+    this.stopCountdown()
+    this.stopWinCountdown()
+    window.removeEventListener('resize', this.adjustBoardSize)
   },
   methods: {
-    // 计算拼图块的z-index，确保被拖动的拼图块组不会出现白块
-    getPieceZIndex(piece) {
-      if (!piece.isDragging) {
-        return 1
-      }
-
-      // 如果是被拖动的拼图块，根据其在draggedPieces数组中的位置设置z-index
-      const dragIndex = this.draggedPieces.findIndex(p => p.id === piece.id)
-      if (dragIndex !== -1) {
-        // 使用基础z-index加上拖动索引，确保所有被拖动的拼图块都有不同的z-index
-        return 100 + dragIndex
-      }
-
-      return 1
-    },
-
-    handleImageUpload(event) {
-      const file = event.target.files[0]
-      if (!file) return
-
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const img = new Image()
-        img.onload = () => {
-          this.calculateBoardDimensions(img)
-          this.imageUrl = e.target.result
-          this.imageLoaded = true
-          this.initGame()
-        }
-        img.src = e.target.result
-      }
-      reader.readAsDataURL(file)
-    },
-
-    // 计算拼图板尺寸
-    calculateBoardDimensions(img) {
-      const MAX_WIDTH = 500
-      const MAX_HEIGHT = 500
-      const MIN_SIZE = 300
-
-      const aspectRatio = img.width / img.height
-
-      // 根据宽高比计算尺寸
-      if (aspectRatio > 1) {
-        this.boardWidth = MAX_WIDTH
-        this.boardHeight = MAX_WIDTH / aspectRatio
+    adjustBoardSize() {
+      // 根据屏幕宽度调整拼图板大小
+      const screenWidth = window.innerWidth
+      if (screenWidth <= 768) {
+        // 手机端，使用屏幕宽度的90%
+        this.boardSize = Math.min(screenWidth * 0.9, 400)
       } else {
-        this.boardHeight = MAX_HEIGHT
-        this.boardWidth = MAX_HEIGHT * aspectRatio
+        // 桌面端，使用固定大小
+        this.boardSize = 400
       }
+      // 重新计算拼图块大小
+      this.tileSize = this.boardSize / this.difficulty
+    },
+    resetGame() {
+      this.stopCountdown()
+      this.stopWinCountdown()
+      this.isWin = false
+      this.showPreview = true
+      this.countdown = 3
 
-      // 确保拼图板大小不会太小
-      if (this.boardWidth < MIN_SIZE) {
-        this.boardWidth = MIN_SIZE
-        this.boardHeight = MIN_SIZE / aspectRatio
-      }
-      if (this.boardHeight < MIN_SIZE) {
-        this.boardHeight = MIN_SIZE
-        this.boardWidth = MIN_SIZE * aspectRatio
+      this.draggedTile = null
+      this.dragOverTile = null
+
+      this.adjustBoardSize()
+      this.tiles = this.createTiles()
+
+      this.startCountdown()
+    },
+
+    startCountdown() {
+      this.countdownInterval = setInterval(() => {
+        this.countdown--
+        if (this.countdown <= 0) {
+          this.stopCountdown()
+          this.showPreview = false
+          this.shuffleTiles()
+        }
+      }, 1000)
+    },
+
+    stopCountdown() {
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval)
+        this.countdownInterval = null
       }
     },
 
-    initGame() {
-      this.isComplete = false
-      this.pieceWidth = this.boardWidth / this.difficulty
-      this.pieceHeight = this.boardHeight / this.difficulty
-      this.puzzlePieces = this.createPuzzlePieces()
-      this.shufflePieces()
-    },
-
-    // 创建拼图块
-    createPuzzlePieces() {
-      const pieces = []
+    createTiles() {
+      const tiles = []
       for (let row = 0; row < this.difficulty; row++) {
         for (let col = 0; col < this.difficulty; col++) {
-          const correctX = col * this.pieceWidth
-          const correctY = row * this.pieceHeight
-
-          pieces.push({
-            id: row * this.difficulty + col,
-            correctX,
-            correctY,
-            currentX: correctX,
-            currentY: correctY,
-            backgroundPosition: `-${correctX}px -${correctY}px`,
-            isDragging: false,
-            isCorrect: true
+          tiles.push({
+            number: row * this.difficulty + col + 1,
+            currentRow: row,
+            currentCol: col,
+            originalRow: row,
+            originalCol: col,
+            isEmpty: false
           })
         }
       }
-      return pieces
+      return tiles
     },
 
-    shufflePieces() {
-      // 收集所有位置
-      const positions = this.puzzlePieces.map(piece => ({
-        x: piece.currentX,
-        y: piece.currentY
-      }))
+    shuffleTiles() {
+      const totalTiles = this.tiles.length
+      const swapCount = totalTiles * 5
 
-      // 随机打乱位置
-      for (let i = positions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[positions[i], positions[j]] = [positions[j], positions[i]]
+      for (let i = 0; i < swapCount; i++) {
+        const index1 = Math.floor(Math.random() * totalTiles)
+        const index2 = Math.floor(Math.random() * totalTiles)
+        this.swapTiles(this.tiles[index1], this.tiles[index2])
+      }
+    },
+
+    handleDragStart(tile, event) {
+      if (this.isWin || this.showPreview) {
+        event.preventDefault()
+        return
+      }
+      this.draggedTile = tile
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', '')
+    },
+
+    handleDragOver(tile) {
+      if (this.draggedTile && this.draggedTile !== tile) {
+        this.dragOverTile = tile
+      }
+    },
+
+    handleDragLeave() {
+      this.dragOverTile = null
+    },
+
+    isDragOver(tile) {
+      return this.dragOverTile === tile
+    },
+
+    handleDrop(tile) {
+      if (!this.draggedTile || this.draggedTile === tile) {
+        this.dragOverTile = null
+        return
       }
 
-      // 将打乱后的位置分配给拼图块
-      this.puzzlePieces.forEach((piece, index) => {
-        piece.currentX = positions[index].x
-        piece.currentY = positions[index].y
-        piece.isCorrect = piece.currentX === piece.correctX && piece.currentY === piece.correctY
-      })
+      // 保存被拖动的拼图块引用
+      const movedTile = this.draggedTile
+      const targetTile = tile
 
-      // 检查是否已经完成（虽然概率很低）
-      this.checkCompletion()
+      this.swapTiles(movedTile, targetTile)
+      this.draggedTile = null
+      this.dragOverTile = null
+
+      if (this.checkWin()) {
+        this.handleWin()
+      }
     },
 
-    startDrag(event, index) {
+    handleTouchStart(tile, event) {
+      if (this.isWin || this.showPreview) {
+        return
+      }
+      this.touchedTile = tile
+      this.touchStartX = event.touches[0].clientX
+      this.touchStartY = event.touches[0].clientY
+    },
+
+    handleTouchMove(tile, event) {
       event.preventDefault()
-      this.isDragging = true
-      this.draggedPieceIndex = index
+    },
 
-      // 获取被拖动的拼图块
-      const piece = this.puzzlePieces[index]
-
-      // 找出所有与当前拼图块相连且相对位置正确的拼图块
-      this.draggedPieces = this.findConnectedPieces(piece)
-
-      // 标记所有被拖动的拼图块
-      this.draggedPieces.forEach(p => {
-        p.isDragging = true
-        p.dragStartX = p.currentX
-        p.dragStartY = p.currentY
-      })
-
-      const clientX = event.clientX || event.touches[0].clientX
-      const clientY = event.clientY || event.touches[0].clientY
-
-      this.dragStartX = clientX
-      this.dragStartY = clientY
-      this.pieceStartX = piece.currentX
-      this.pieceStartY = piece.currentY
-
-      // 创建占位符
-      this.placeholder = {
-        pieces: this.draggedPieces.map(p => ({
-          x: p.currentX,
-          y: p.currentY,
-          width: this.pieceWidth,
-          height: this.pieceHeight,
-          backgroundPosition: p.backgroundPosition
-        }))
+    handleTouchEnd(event) {
+      if (!this.touchedTile) {
+        return
       }
 
-      // 添加全局事件监听
-      document.addEventListener('mousemove', this.handleDrag)
-      document.addEventListener('mouseup', this.stopDrag)
-      document.addEventListener('touchmove', this.handleDrag)
-      document.addEventListener('touchend', this.stopDrag)
-    },
+      const touchEndX = event.changedTouches[0].clientX
+      const touchEndY = event.changedTouches[0].clientY
 
-    handleDrag(event) {
-      if (!this.isDragging || this.draggedPieces.length === 0) return
+      const deltaX = touchEndX - this.touchStartX
+      const deltaY = touchEndY - this.touchStartY
 
-      event.preventDefault()
+      const absDeltaX = Math.abs(deltaX)
+      const absDeltaY = Math.abs(deltaY)
 
-      const clientX = event.clientX || event.touches[0].clientX
-      const clientY = event.clientY || event.touches[0].clientY
+      // 判断滑动方向
+      if (absDeltaX > absDeltaY) {
+        // 水平滑动
+        if (absDeltaX > 30) {
+          const targetCol = deltaX > 0 
+            ? this.touchedTile.currentCol + 1 
+            : this.touchedTile.currentCol - 1
+          const targetRow = this.touchedTile.currentRow
 
-      const deltaX = clientX - this.dragStartX
-      const deltaY = clientY - this.dragStartY
-
-      // 计算整个拼图块组的边界
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-      this.draggedPieces.forEach(piece => {
-        const newX = piece.dragStartX + deltaX
-        const newY = piece.dragStartY + deltaY
-        minX = Math.min(minX, newX)
-        minY = Math.min(minY, newY)
-        maxX = Math.max(maxX, newX)
-        maxY = Math.max(maxY, newY)
-      })
-
-      // 计算需要调整的偏移量，确保整个拼图块组都在拼图板内
-      let adjustedDeltaX = deltaX
-      let adjustedDeltaY = deltaY
-      if (minX < 0) adjustedDeltaX -= minX
-      if (minY < 0) adjustedDeltaY -= minY
-      if (maxX > this.boardWidth - this.pieceWidth) adjustedDeltaX -= (maxX - (this.boardWidth - this.pieceWidth))
-      if (maxY > this.boardHeight - this.pieceHeight) adjustedDeltaY -= (maxY - (this.boardHeight - this.pieceHeight))
-
-      // 移动所有被拖动的拼图块
-      this.draggedPieces.forEach(piece => {
-        const newX = piece.dragStartX + adjustedDeltaX
-        const newY = piece.dragStartY + adjustedDeltaY
-        piece.currentX = newX
-        piece.currentY = newY
-      })
-
-      // 更新拼图块状态
-      this.draggedPieces.forEach(piece => {
-        piece.isCorrect = piece.currentX === piece.correctX && piece.currentY === piece.correctY
-      })
-    },
-
-    stopDrag() {
-      if (!this.isDragging || this.draggedPieces.length === 0) return
-
-      // 计算所有被拖动拼图块的目标位置
-      const targetPositions = this.draggedPieces.map(piece => {
-        const nearestX = Math.round(piece.currentX / this.pieceWidth) * this.pieceWidth
-        const nearestY = Math.round(piece.currentY / this.pieceHeight) * this.pieceHeight
-        return {
-          piece: piece,
-          targetX: nearestX,
-          targetY: nearestY
-        }
-      })
-
-      // 收集所有被拖动拼图块的起始位置
-      const draggedStartPositions = new Map()
-      this.draggedPieces.forEach(piece => {
-        draggedStartPositions.set(`${piece.dragStartX},${piece.dragStartY}`, piece)
-      })
-
-      // 计算拼图块组的整体移动方向和距离
-      let totalDeltaX = 0, totalDeltaY = 0
-      this.draggedPieces.forEach(piece => {
-        const deltaX = piece.currentX - piece.dragStartX
-        const deltaY = piece.currentY - piece.dragStartY
-        totalDeltaX += deltaX
-        totalDeltaY += deltaY
-      })
-      const avgDeltaX = totalDeltaX / this.draggedPieces.length
-      const avgDeltaY = totalDeltaY / this.draggedPieces.length
-
-      // 确定主要移动方向
-      const isHorizontalMove = Math.abs(avgDeltaX) > Math.abs(avgDeltaY)
-      const moveDirection = isHorizontalMove ? (avgDeltaX > 0 ? 1 : -1) : (avgDeltaY > 0 ? 1 : -1)
-
-      // 计算拼图块组的边界
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-      this.draggedPieces.forEach(piece => {
-        minX = Math.min(minX, piece.dragStartX)
-        maxX = Math.max(maxX, piece.dragStartX)
-        minY = Math.min(minY, piece.dragStartY)
-        maxY = Math.max(maxY, piece.dragStartY)
-      })
-      const groupWidth = maxX - minX + this.pieceWidth
-      const groupHeight = maxY - minY + this.pieceHeight
-
-      // 找出所有需要移动的非拖动拼图块
-      const moves = []
-      targetPositions.forEach(({ targetX, targetY }) => {
-        // 检查目标位置是否有非拖动拼图块
-        const pieceAtPosition = this.puzzlePieces.find(p =>
-          !p.isDragging &&
-          Math.abs(p.currentX - targetX) < 1 &&
-          Math.abs(p.currentY - targetY) < 1
-        )
-
-        if (pieceAtPosition) {
-          // 检查这个位置是否是被拖动拼图块的起始位置
-          const startPiece = draggedStartPositions.get(`${targetX},${targetY}`)
-
-          if (!startPiece) {
-            // 计算移动距离
-            let moveX = 0, moveY = 0
-
-            // 如果是水平移动，移动距离为整个拼图块组的宽度
-            if (isHorizontalMove) {
-              moveX = moveDirection * groupWidth
-            } else {
-              // 如果是垂直移动，移动距离为整个拼图块组的高度
-              moveY = moveDirection * groupHeight
-            }
-
-            // 检查是否已经记录了这个拼图块的移动
-            const existingMove = moves.find(m => m.piece.id === pieceAtPosition.id)
-            if (!existingMove) {
-              moves.push({
-                piece: pieceAtPosition,
-                moveX: moveX,
-                moveY: moveY
-              })
+          // 检查目标位置是否在边界内
+          if (targetCol >= 0 && targetCol < this.difficulty) {
+            const targetTile = this.getTileAtPosition(targetRow, targetCol)
+            if (targetTile) {
+              this.swapTiles(this.touchedTile, targetTile)
+              if (this.checkWin()) {
+                this.handleWin()
+              }
             }
           }
         }
-      })
+      } else {
+        // 垂直滑动
+        if (absDeltaY > 30) {
+          const targetRow = deltaY > 0 
+            ? this.touchedTile.currentRow + 1 
+            : this.touchedTile.currentRow - 1
+          const targetCol = this.touchedTile.currentCol
 
-      // 执行所有移动操作
-      moves.forEach(move => {
-        const { piece, moveX, moveY } = move
-
-        // 将非拖动拼图块向反方向移动整个拼图块组的长度
-        piece.currentX = piece.currentX + moveX
-        piece.currentY = piece.currentY + moveY
-        piece.isCorrect = piece.currentX === piece.correctX && 
-                          piece.currentY === piece.correctY
-      })
-
-      // 移动所有被拖动的拼图块到目标位置
-      targetPositions.forEach(({ piece, targetX, targetY }) => {
-        piece.currentX = targetX
-        piece.currentY = targetY
-        piece.isCorrect = piece.currentX === piece.correctX && piece.currentY === piece.correctY
-      })
-
-      // 重置拖动状态
-      this.draggedPieces.forEach(piece => {
-        piece.isDragging = false
-      })
-      this.isDragging = false
-      this.draggedPieceIndex = null
-      this.draggedPieces = []
-
-      // 清除占位符
-      this.placeholder = null
-
-      // 移除全局事件监听
-      document.removeEventListener('mousemove', this.handleDrag)
-      document.removeEventListener('mouseup', this.stopDrag)
-      document.removeEventListener('touchmove', this.handleDrag)
-      document.removeEventListener('touchend', this.stopDrag)
-
-      // 检查是否完成
-      this.checkCompletion()
-    },
-
-    handleDragStart(e) {
-      e.preventDefault()
-    },
-
-    // 检查拼图块是否有相邻的拼图块，且它们的相对位置和方向都是正确的
-    hasCorrectNeighbor(piece) {
-      // 检查四个方向的邻居
-      const neighbors = [
-        { dx: 0, dy: -1 }, // 上
-        { dx: 1, dy: 0 },  // 右
-        { dx: 0, dy: 1 },  // 下
-        { dx: -1, dy: 0 }  // 左
-      ]
-
-      for (const { dx, dy } of neighbors) {
-        // 计算邻居的当前位置
-        const neighborCurrentX = piece.currentX + dx * this.pieceWidth
-        const neighborCurrentY = piece.currentY + dy * this.pieceHeight
-
-        // 找到在当前位置的拼图块
-        const neighborPiece = this.puzzlePieces.find(p =>
-          Math.abs(p.currentX - neighborCurrentX) < this.tolerance &&
-          Math.abs(p.currentY - neighborCurrentY) < this.tolerance &&
-          p.id !== piece.id
-        )
-
-        // 如果找到相邻的拼图块，检查它们的相对位置和方向是否正确
-        if (neighborPiece) {
-          // 计算邻居拼图块相对于当前拼图块的正确位置
-          const correctRelativeX = neighborPiece.correctX - piece.correctX
-          const correctRelativeY = neighborPiece.correctY - piece.correctY
-
-          // 计算邻居拼图块相对于当前拼图块的实际位置
-          const actualRelativeX = neighborPiece.currentX - piece.currentX
-          const actualRelativeY = neighborPiece.currentY - piece.currentY
-
-          // 检查相对位置和方向是否正确
-          const isXCorrect = Math.abs(correctRelativeX - actualRelativeX) < this.tolerance
-          const isYCorrect = Math.abs(correctRelativeY - actualRelativeY) < this.tolerance
-
-          // 检查方向是否正确（例如，如果邻居应该在上方，则实际位置也必须在上方）
-          const isDirectionCorrect =
-            (correctRelativeX === 0 && actualRelativeX === 0) ||
-            (correctRelativeY === 0 && actualRelativeY === 0)
-
-          // 如果相对位置和方向都正确，返回true
-          if (isXCorrect && isYCorrect && isDirectionCorrect) {
-            return true
-          }
-        }
-      }
-
-      // 没有找到相对位置和方向都正确的相邻拼图块，返回false
-      return false
-    },
-
-    // 找出所有与指定拼图块相连且相对位置正确的拼图块
-    findConnectedPieces(piece) {
-      const connectedPieces = [piece]
-      const checkedPieces = new Set([piece.id])
-
-      const checkNeighbors = (currentPiece) => {
-        // 检查四个方向的邻居
-        const neighbors = [
-          { dx: 0, dy: -1 }, // 上
-          { dx: 1, dy: 0 },  // 右
-          { dx: 0, dy: 1 },  // 下
-          { dx: -1, dy: 0 }  // 左
-        ]
-
-        neighbors.forEach(({ dx, dy }) => {
-          // 计算邻居的当前位置
-          const neighborCurrentX = currentPiece.currentX + dx * this.pieceWidth
-          const neighborCurrentY = currentPiece.currentY + dy * this.pieceHeight
-
-          // 找到在当前位置的拼图块
-          const neighborPiece = this.puzzlePieces.find(p =>
-            Math.abs(p.currentX - neighborCurrentX) < this.tolerance &&
-            Math.abs(p.currentY - neighborCurrentY) < this.tolerance &&
-            !checkedPieces.has(p.id)
-          )
-
-          if (neighborPiece) {
-            // 计算邻居拼图块相对于当前拼图块的正确位置
-            const correctRelativeX = neighborPiece.correctX - currentPiece.correctX
-            const correctRelativeY = neighborPiece.correctY - currentPiece.correctY
-
-            // 计算邻居拼图块相对于当前拼图块的实际位置
-            const actualRelativeX = neighborPiece.currentX - currentPiece.currentX
-            const actualRelativeY = neighborPiece.currentY - currentPiece.currentY
-
-            // 检查相对位置和方向是否正确
-            const isXCorrect = Math.abs(correctRelativeX - actualRelativeX) < this.tolerance
-            const isYCorrect = Math.abs(correctRelativeY - actualRelativeY) < this.tolerance
-
-            // 只有当相对位置正确时，才将其添加到连接的拼图块列表中
-            if (isXCorrect && isYCorrect) {
-              checkedPieces.add(neighborPiece.id)
-              connectedPieces.push(neighborPiece)
-              checkNeighbors(neighborPiece)
+          // 检查目标位置是否在边界内
+          if (targetRow >= 0 && targetRow < this.difficulty) {
+            const targetTile = this.getTileAtPosition(targetRow, targetCol)
+            if (targetTile) {
+              this.swapTiles(this.touchedTile, targetTile)
+              if (this.checkWin()) {
+                this.handleWin()
+              }
             }
           }
-        })
-      }
-
-      checkNeighbors(piece)
-
-      return connectedPieces
-    },
-
-    checkCompletion() {
-      this.isComplete = this.puzzlePieces.every(piece => piece.isCorrect)
-
-      if (this.isComplete) {
-        // 显示成功消息
-        this.showSuccessMessage = true
-
-        // 3秒后自动隐藏成功消息
-        if (this.successTimer) {
-          clearTimeout(this.successTimer)
         }
-        this.successTimer = setTimeout(() => {
-          this.showSuccessMessage = false
-        }, 3000)
+      }
+
+      this.touchedTile = null
+    },
+
+    // 获取指定位置上的拼图块
+    getTileAtPosition(row, col) {
+      return this.tiles.find(t => t.currentRow === row && t.currentCol === col)
+    },
+
+    swapTiles(tile1, tile2) {
+      const tempRow = tile1.currentRow
+      const tempCol = tile1.currentCol
+
+      tile1.currentRow = tile2.currentRow
+      tile1.currentCol = tile2.currentCol
+
+      tile2.currentRow = tempRow
+      tile2.currentCol = tempCol
+    },
+
+    checkWin() {
+      return this.tiles.every(tile =>
+        tile.currentRow === tile.originalRow &&
+        tile.currentCol === tile.originalCol
+      )
+    },
+
+    handleWin() {
+      this.isWin = true
+      this.winCountdown = 3
+      this.startWinCountdown()
+    },
+
+    getTileStyle(tile) {
+      return {
+        width: this.tileSize + 'px',
+        height: this.tileSize + 'px',
+        left: tile.currentCol * this.tileSize + 'px',
+        top: tile.currentRow * this.tileSize + 'px',
+        backgroundImage: `url(${this.imageSrc})`,
+        backgroundSize: `${this.boardSize}px ${this.boardSize}px`,
+        backgroundPosition: `-${tile.originalCol * this.tileSize}px -${tile.originalRow * this.tileSize}px`
       }
     },
 
-    resetGame() {
-      if (this.imageLoaded) {
-        this.initGame()
+    nextLevel() {
+      // 生成新的随机图片URL
+      const randomSeed = Math.random().toString(36).substring(7)
+      this.imageSrc = `https://picsum.photos/600/600?random=${randomSeed}`
+      this.resetGame()
+    },
+
+    startWinCountdown() {
+      this.winCountdownInterval = setInterval(() => {
+        this.winCountdown--
+        if (this.winCountdown <= 0) {
+          this.stopWinCountdown()
+          this.isWin = false
+        }
+      }, 1000)
+    },
+
+    stopWinCountdown() {
+      if (this.winCountdownInterval) {
+        clearInterval(this.winCountdownInterval)
+        this.winCountdownInterval = null
       }
     },
 
-    goBack() {
-      this.$router.push('/')
+    closeModal() {
+      this.isWin = false
     }
   }
 }
 </script>
 
 <style scoped>
-.puzzle-game {
+.puzzle-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  background-attachment: fixed;
 }
 
 .header {
-  margin-bottom: 30px;
   text-align: center;
+  margin-bottom: 20px;
+  color: #5a6c7d;
+  width: 100%;
+  max-width: 600px;
 }
 
 .header h1 {
-  color: #2c3e50;
-  margin-bottom: 20px;
+  margin: 0 0 20px 0;
+  font-size: 2.5em;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 1.8em;
+  }
 }
 
 .controls {
   display: flex;
-  justify-content: center;
   gap: 15px;
+  justify-content: center;
+  align-items: center;
   flex-wrap: wrap;
+  width: 100%;
+  max-width: 600px;
 }
 
-.btn {
+@media (max-width: 768px) {
+  .controls {
+    gap: 10px;
+  }
+}
+
+.difficulty-selector select {
   padding: 10px 20px;
-  background-color: #667eea;
-  color: white;
+  border-radius: 25px;
   border: none;
-  border-radius: 4px;
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.3s;
-  font-size: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #5a6c7d;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
 }
 
-.btn:hover {
-  background-color: #5a6fd6;
+.difficulty-selector select:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
 }
 
-.upload-btn {
-  display: inline-block;
-  background-color: #42b983;
-}
-
-.upload-btn:hover {
-  background-color: #3aa876;
+.difficulty-selector select:focus {
+  outline: none;
+  box-shadow: 0 4px 10px rgba(168, 237, 234, 0.4);
 }
 
 .reset-btn {
-  background-color: #f39c12;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+  color: #5a6c7d;
+  border: none;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 4px 10px rgba(255, 154, 158, 0.3);
+  transition: all 0.3s ease;
 }
 
 .reset-btn:hover {
-  background-color: #e67e22;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(255, 154, 158, 0.4);
 }
 
-.back-btn {
-  background-color: #95a5a6;
+.next-level-btn {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  color: #5a6c7d;
+  border: none;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 4px 10px rgba(168, 237, 234, 0.3);
+  transition: all 0.3s ease;
 }
 
-.back-btn:hover {
-  background-color: #7f8c8d;
+.next-level-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(168, 237, 234, 0.4);
 }
 
-.difficulty-select {
-  padding: 10px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  font-size: 14px;
-}
-
-.game-container {
-  display: flex;
-  justify-content: center;
-  gap: 30px;
-  flex-wrap: wrap;
-}
-
-.puzzle-area {
-  flex: 1;
-  display: flex;
-  justify-content: center;
+.game-status {
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 15px 30px;
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  font-size: 1.2em;
+  color: #5a6c7d;
+  font-weight: 500;
+  text-align: center;
+  backdrop-filter: blur(10px);
 }
 
 .puzzle-board {
   position: relative;
-  background-color: #f5f7fa;
-  border: 2px solid #ddd;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  user-select: none;
-}
-
-.puzzle-piece {
-  position: absolute;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  cursor: move;
-  box-sizing: border-box;
-  transition: box-shadow 0.2s, opacity 0.2s;
-}
-
-.puzzle-piece.dragging {
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-  transform: scale(1.05);
-}
-
-.puzzle-placeholder {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.puzzle-placeholder > div {
-  position: absolute;
-  border: 2px dashed rgba(102, 126, 234, 0.5);
-  background-color: rgba(102, 126, 234, 0.1);
-  box-sizing: border-box;
-}
-
-.puzzle-piece:hover {
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-}
-
-.puzzle-piece.correct {
-  border: 1px solid rgba(66, 185, 131, 0.5);
-}
-
-.preview-area {
-  width: 250px;
-  text-align: center;
-}
-
-.preview-area h3 {
-  color: #2c3e50;
-  margin-bottom: 15px;
-}
-
-.preview-image {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  overflow: visible;
   max-width: 100%;
-  border: 2px solid #ddd;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.no-image {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 450px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
-  color: #7f8c8d;
-  font-size: 18px;
-}
-
-.success-message {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  padding: 20px 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.success-message .message-content {
-  background-color: transparent;
-  padding: 0;
-  box-shadow: none;
-  text-align: center;
-}
-
-.message-content {
-  background-color: white;
-  padding: 40px;
-  border-radius: 8px;
-  text-align: center;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-}
-
-.message-content h2 {
-  color: #42b983;
-  margin: 0 0 15px 0;
-  font-size: 18px;
+  backdrop-filter: blur(10px);
 }
 
 @media (max-width: 768px) {
-  .puzzle-game {
-    padding: 10px;
-  }
-
-  .header h1 {
-    font-size: 24px;
-  }
-
-  .controls {
-    gap: 10px;
-  }
-
-  .btn {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-
-  .difficulty-select {
-    padding: 8px;
-    font-size: 12px;
-  }
-
-  .game-container {
-    flex-direction: column;
-  }
-
-  .puzzle-area {
-    width: 100%;
-  }
-
   .puzzle-board {
-    max-width: 100%;
+    max-width: 90vw;
   }
+}
 
-  .preview-area {
-    width: 100%;
-    margin-top: 20px;
-  }
+.tile {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  cursor: grab;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-sizing: border-box;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+  user-select: none;
+  border-radius: 4px;
+  overflow: hidden;
+}
 
-  .success-message {
-    top: 10px;
-    left: 50%;
-    right: 10px;
-    transform: translateX(-50%);
-    width: calc(100% - 20px);
-    padding: 15px 20px;
-  }
+.tile:active {
+  cursor: grabbing;
+}
 
-  .message-content h2 {
-    font-size: 16px;
+.tile:hover {
+  transform: scale(1.02);
+  box-shadow: 0 8px 16px rgba(168, 237, 234, 0.4);
+  z-index: 10;
+}
+
+.tile.dragging {
+  opacity: 0.9;
+  transform: scale(1.05);
+  box-shadow: 0 12px 24px rgba(168, 237, 234, 0.5);
+  z-index: 100;
+}
+
+.tile.drag-over {
+  transform: scale(0.95);
+  box-shadow: 0 0 20px rgba(168, 237, 234, 0.6);
+  border-color: #a8edea;
+}
+
+.tile.no-border {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.win-modal {
+  position: fixed;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 30px 50px;
+  border-radius: 25px;
+  box-shadow: 0 10px 30px rgba(168, 237, 234, 0.3);
+  z-index: 1000;
+  animation: slideUp 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(20px);
+    opacity: 0;
   }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  text-align: center;
+}
+
+.modal-content h2 {
+  margin: 0 0 20px 0;
+  color: #5a6c7d;
+  font-weight: 600;
+}
+
+.play-again-btn {
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  color: #5a6c7d;
+  border: none;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 10px rgba(168, 237, 234, 0.3);
+}
+
+.play-again-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(168, 237, 234, 0.4);
 }
 </style>
