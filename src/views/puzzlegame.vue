@@ -235,6 +235,18 @@ export default {
       const touch = event.touches[0]
       const element = document.elementFromPoint(touch.clientX, touch.clientY)
 
+      // 获取被拖拽的拼图块元素
+      const draggedElement = document.querySelector(`.tile[data-index="${this.tiles.indexOf(this.touchedTile)}"]`)
+
+      if (draggedElement) {
+        // 计算移动距离
+        const deltaX = touch.clientX - this.touchStartX
+        const deltaY = touch.clientY - this.touchStartY
+
+        // 应用移动
+        draggedElement.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(1.05)`
+      }
+
       // 查找被触摸的拼图块
       if (element && element.classList.contains('tile')) {
         // 获取该拼图块的索引
@@ -286,6 +298,7 @@ export default {
         if (el) {
           el.classList.remove('dragging')
           el.classList.remove('drag-over')
+          el.style.transform = ''
         }
       })
       this.touchedTile = null
