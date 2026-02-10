@@ -6,8 +6,9 @@
         <div class="difficulty-selector">
           <label>难度:</label>
           <select v-model="difficulty" @change="resetGame">
-            <option value="5">简单 (5x5)</option>
-            <option value="9">中等 (9x9)</option>
+            <option value="3">简单 (3x3)</option>
+            <option value="5">中等 (5x5)</option>
+            <option value="9">较难 (9x9)</option>
             <option value="10">困难 (10x10)</option>
           </select>
         </div>
@@ -345,8 +346,7 @@ export default {
         top: tile.currentRow * this.tileSize + 'px',
         backgroundImage: `url(${this.imageSrc})`,
         backgroundSize: `${this.boardSize}px ${this.boardSize}px`,
-        backgroundPosition: `-${tile.originalCol * this.tileSize}px -${tile.originalRow * this.tileSize}px`,
-        transform: tile === this.touchedTile ? undefined : ''
+        backgroundPosition: `-${tile.originalCol * this.tileSize}px -${tile.originalRow * this.tileSize}px`
       }
     },
 
@@ -388,8 +388,33 @@ export default {
   align-items: center;
   padding: 20px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-  background-attachment: fixed;
+  position: relative;
+  overflow: hidden;
+}
+
+.puzzle-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('https://picsum.photos/1920/1080?random=background');
+  background-size: cover;
+  background-position: center;
+  filter: blur(10px);
+  z-index: -1;
+}
+
+.puzzle-container::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  z-index: -1;
 }
 
 .header {
@@ -402,15 +427,19 @@ export default {
 
 .header h1 {
   margin: 0 0 20px 0;
-  font-size: 2.5em;
-  font-weight: 600;
-  letter-spacing: 1px;
-  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
+  font-size: 2.8em;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 @media (max-width: 768px) {
   .header h1 {
-    font-size: 1.8em;
+    font-size: 2em;
   }
 }
 
@@ -430,86 +459,98 @@ export default {
   }
 }
 
+.difficulty-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.difficulty-selector label {
+  font-size: 16px;
+  font-weight: 500;
+  color: #5a6c7d;
+}
+
 .difficulty-selector select {
-  padding: 10px 20px;
-  border-radius: 25px;
-  border: none;
+  padding: 12px 25px;
+  border-radius: 30px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
   color: #5a6c7d;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
 .difficulty-selector select:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  border-color: rgba(168, 237, 234, 0.6);
 }
 
 .difficulty-selector select:focus {
   outline: none;
-  box-shadow: 0 4px 10px rgba(168, 237, 234, 0.4);
+  box-shadow: 0 4px 15px rgba(168, 237, 234, 0.5);
+  border-color: rgba(168, 237, 234, 0.8);
 }
 
-.reset-btn {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
-  color: #5a6c7d;
-  border: none;
-  border-radius: 25px;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 500;
-  box-shadow: 0 4px 10px rgba(255, 154, 158, 0.3);
-  transition: all 0.3s ease;
-}
-
-.reset-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(255, 154, 158, 0.4);
-}
-
+.reset-btn,
 .next-level-btn {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-  color: #5a6c7d;
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   border: none;
-  border-radius: 25px;
+  border-radius: 30px;
   cursor: pointer;
   font-size: 15px;
-  font-weight: 500;
-  box-shadow: 0 4px 10px rgba(168, 237, 234, 0.3);
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
   transition: all 0.3s ease;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
 }
 
+.reset-btn:hover,
 .next-level-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(168, 237, 234, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.reset-btn:active,
+.next-level-btn:active {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
 }
 
 .game-status {
   margin-bottom: 20px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 15px 30px;
-  border-radius: 20px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-  font-size: 1.2em;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 18px 40px;
+  border-radius: 30px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  font-size: 1.1em;
   color: #5a6c7d;
-  font-weight: 500;
+  font-weight: 600;
   text-align: center;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(15px);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.5px;
 }
 
 .puzzle-board {
   position: relative;
   background: rgba(255, 255, 255, 0.95);
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  border-radius: 25px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
   overflow: visible;
   max-width: 100%;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(15px);
+  border: 3px solid rgba(255, 255, 255, 0.9);
 }
 
 @media (max-width: 768px) {
@@ -570,18 +611,19 @@ export default {
   bottom: 50px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.95);
-  padding: 30px 50px;
-  border-radius: 25px;
-  box-shadow: 0 10px 30px rgba(168, 237, 234, 0.3);
+  background: rgba(255, 255, 255, 0.98);
+  padding: 40px 60px;
+  border-radius: 30px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   z-index: 1000;
-  animation: slideUp 0.3s ease;
-  backdrop-filter: blur(10px);
+  animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(20px);
+  border: 3px solid rgba(255, 255, 255, 0.9);
 }
 
 @keyframes slideUp {
   from {
-    transform: translateX(-50%) translateY(20px);
+    transform: translateX(-50%) translateY(30px);
     opacity: 0;
   }
   to {
@@ -595,26 +637,39 @@ export default {
 }
 
 .modal-content h2 {
-  margin: 0 0 20px 0;
-  color: #5a6c7d;
-  font-weight: 600;
+  margin: 0 0 25px 0;
+  font-size: 1.8em;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+  letter-spacing: 1px;
 }
 
 .play-again-btn {
-  padding: 12px 30px;
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-  color: #5a6c7d;
+  padding: 14px 40px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   border: none;
-  border-radius: 25px;
+  border-radius: 30px;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 10px rgba(168, 237, 234, 0.3);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .play-again-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(168, 237, 234, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(102, 126, 234, 0.5);
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.play-again-btn:active {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 </style>
