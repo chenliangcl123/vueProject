@@ -23,7 +23,11 @@
 
     <div
       class="puzzle-board"
-      :style="{ width: boardSize + 'px', height: boardSize + 'px' }"
+      :style="{ 
+        width: boardSize + 'px', 
+        height: boardSize + 'px',
+        '--difficulty': difficulty
+      }"
     >
       <div
         v-for="(tile, index) in tiles"
@@ -547,10 +551,11 @@ export default {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 25px;
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
-  overflow: visible;
+  overflow: hidden;
   max-width: 100%;
   backdrop-filter: blur(15px);
   border: 3px solid rgba(255, 255, 255, 0.9);
+  --difficulty: 5;
 }
 
 @media (max-width: 768px) {
@@ -575,6 +580,8 @@ export default {
   user-select: none;
   border-radius: 4px;
   overflow: hidden;
+  width: calc(100% / var(--difficulty));
+  height: calc(100% / var(--difficulty));
 }
 
 .tile:active {
