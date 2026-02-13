@@ -17,9 +17,7 @@
       </div>
     </div>
 
-    <div class="game-status" v-if="showPreview">
-      <p>请记住原图位置，{{ countdown }}秒后开始游戏...</p>
-    </div>
+    <!-- 倒计时提示隐藏，但功能保留 -->
 
     <div
       class="puzzle-board"
@@ -29,27 +27,34 @@
         '--difficulty': difficulty
       }"
     >
-      <div
-        v-for="(tile, index) in tiles"
-        :key="index"
-        class="tile"
-        :class="{
-          dragging: draggedTile === tile,
-          'drag-over': isDragOver(tile),
-          'no-border': isWin
-        }"
-        :style="getTileStyle(tile)"
-        :draggable="!isWin"
-        :data-index="index"
-        @dragstart="handleDragStart(tile, $event)"
-        @dragover.prevent="handleDragOver(tile)"
-        @dragleave="handleDragLeave"
-        @drop="handleDrop(tile)"
-        @touchstart="handleTouchStart(tile, $event)"
-        @touchmove="handleTouchMove(tile, $event)"
-        @touchend="handleTouchEnd($event)"
-      >
-      </div>
+      <!-- 倒计时期间显示完整图片 -->
+      <div v-if="showPreview" class="preview-image" :style="{ backgroundImage: `url(${imageSrc})` }"></div>
+      
+      <!-- 倒计时结束后显示分割的拼图块 -->
+      <template v-else>
+        <div
+          v-for="(tile, index) in tiles"
+          :key="index"
+          class="tile"
+          :class="{
+            dragging: draggedTile === tile,
+            'drag-over': isDragOver(tile),
+            'no-border': isWin,
+            'no-pointer-events': isWin
+          }"
+          :style="getTileStyle(tile)"
+          :draggable="!isWin"
+          :data-index="index"
+          @dragstart="handleDragStart(tile, $event)"
+          @dragover.prevent="handleDragOver(tile)"
+          @dragleave="handleDragLeave"
+          @drop="handleDrop(tile)"
+          @touchstart="!isWin ? handleTouchStart(tile, $event) : null"
+          @touchmove="!isWin ? handleTouchMove(tile, $event) : null"
+          @touchend="!isWin ? handleTouchEnd($event) : null"
+        >
+        </div>
+      </template>
     </div>
 
     <div class="win-modal" v-if="isWin">
@@ -82,7 +87,8 @@ export default {
       dragOverTile: null,
       touchedTile: null,
       touchStartX: 0,
-      touchStartY: 0
+      touchStartY: 0,
+      lastTargetTile: null
     }
   },
   mounted() {
@@ -98,6 +104,7 @@ export default {
   },
   methods: {
     adjustBoardSize() {
+      console.log('1 adjustBoardSize')
       // 根据屏幕宽度调整拼图板大小
       const screenWidth = window.innerWidth
       if (screenWidth <= 768) {
@@ -111,6 +118,7 @@ export default {
       this.tileSize = this.boardSize / this.difficulty
     },
     resetGame() {
+      console.log('2 resetGame')
       this.stopCountdown()
       this.stopWinCountdown()
       this.isWin = false
@@ -119,6 +127,7 @@ export default {
 
       this.draggedTile = null
       this.dragOverTile = null
+      this.lastTargetTile = null
 
       this.adjustBoardSize()
       this.tiles = this.createTiles()
@@ -127,6 +136,7 @@ export default {
     },
 
     startCountdown() {
+      console.log('3 startCountdown')
       this.countdownInterval = setInterval(() => {
         this.countdown--
         if (this.countdown <= 0) {
@@ -138,6 +148,7 @@ export default {
     },
 
     stopCountdown() {
+      console.log('4 stopCountdown')
       if (this.countdownInterval) {
         clearInterval(this.countdownInterval)
         this.countdownInterval = null
@@ -145,6 +156,7 @@ export default {
     },
 
     createTiles() {
+      console.log('5 createTiles')
       const tiles = []
       for (let row = 0; row < this.difficulty; row++) {
         for (let col = 0; col < this.difficulty; col++) {
@@ -162,6 +174,7 @@ export default {
     },
 
     shuffleTiles() {
+      console.log('6 shuffleTiles')
       const totalTiles = this.tiles.length
       const swapCount = totalTiles * 5
 
@@ -173,6 +186,7 @@ export default {
     },
 
     handleDragStart(tile, event) {
+      console.log('7 handleDragStart')
       if (this.isWin || this.showPreview) {
         event.preventDefault()
         return
@@ -183,20 +197,24 @@ export default {
     },
 
     handleDragOver(tile) {
+      console.log('8 handleDragOver')
       if (this.draggedTile && this.draggedTile !== tile) {
         this.dragOverTile = tile
       }
     },
 
     handleDragLeave() {
+      console.log('9 handleDragLeave')
       this.dragOverTile = null
     },
 
     isDragOver(tile) {
+      console.log('10 isDragOver')
       return this.dragOverTile === tile
     },
 
     handleDrop(tile) {
+      console.log('11 handleDrop')
       if (!this.draggedTile || this.draggedTile === tile) {
         this.dragOverTile = null
         return
@@ -216,6 +234,7 @@ export default {
     },
 
     handleTouchStart(tile, event) {
+      console.log('12 handleTouchStart')
       if (this.isWin || this.showPreview) {
         return
       }
@@ -231,6 +250,7 @@ export default {
     },
 
     handleTouchMove(tile, event) {
+      console.log('13 handleTouchMove')
       if (!this.touchedTile) {
         return
       }
@@ -238,8 +258,7 @@ export default {
 
       // 获取当前触摸位置
       const touch = event.touches[0]
-      const element = document.elementFromPoint(touch.clientX, touch.clientY)
-
+      
       // 获取被拖拽的拼图块元素
       const draggedElement = document.querySelector(`.tile[data-index="${this.tiles.indexOf(this.touchedTile)}"]`)
 
@@ -248,11 +267,13 @@ export default {
         const deltaX = touch.clientX - this.touchStartX
         const deltaY = touch.clientY - this.touchStartY
 
-        // 应用移动
-        draggedElement.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(1.05)`
+        // 应用移动（不放大）
+        draggedElement.style.transform = `translate(${deltaX}px, ${deltaY}px)`
       }
 
       // 查找被触摸的拼图块
+      const element = document.elementFromPoint(touch.clientX, touch.clientY)
+      
       if (element && element.classList.contains('tile')) {
         // 获取该拼图块的索引
         const tileIndex = parseInt(element.getAttribute('data-index'))
@@ -269,31 +290,57 @@ export default {
 
           // 添加拖拽目标样式
           element.classList.add('drag-over')
+          
+          // 记录最后的有效目标拼图块
+          this.lastTargetTile = targetTile
         }
       }
     },
 
     handleTouchEnd(event) {
+      console.log('14 handleTouchEnd')
+      console.log(this.touchedTile)
       if (!this.touchedTile) {
         return
       }
-
+      
       // 获取触摸结束位置
       const touch = event.changedTouches[0]
+      
+      // 获取被拖拽的拼图块元素
+      const draggedElement = document.querySelector(`.tile[data-index="${this.tiles.indexOf(this.touchedTile)}"]`)
+      
+      // 临时隐藏被拖拽的元素，以便获取下方的元素
+      if (draggedElement) {
+        draggedElement.style.visibility = 'hidden'
+      }
+      
+      // 获取触摸位置的元素
       const element = document.elementFromPoint(touch.clientX, touch.clientY)
+      
+      // 恢复被拖拽元素的可见性
+      if (draggedElement) {
+        draggedElement.style.visibility = ''
+      }
 
       // 查找被触摸的拼图块
+      let targetTile = null
       if (element && element.classList.contains('tile')) {
         const tileIndex = parseInt(element.getAttribute('data-index'))
-        const targetTile = this.tiles[tileIndex]
+        targetTile = this.tiles[tileIndex]
+      }
+      
+      // 如果没有获取到目标拼图块，使用记录的最后有效目标拼图块
+      if (!targetTile) {
+        targetTile = this.lastTargetTile
+      }
 
-        if (targetTile && targetTile !== this.touchedTile) {
-          // 交换拼图块
-          this.swapTiles(this.touchedTile, targetTile)
+      // 交换拼图块
+      if (targetTile && targetTile !== this.touchedTile) {
+        this.swapTiles(this.touchedTile, targetTile)
 
-          if (this.checkWin()) {
-            this.handleWin()
-          }
+        if (this.checkWin()) {
+          this.handleWin()
         }
       }
 
@@ -307,6 +354,9 @@ export default {
         }
       })
 
+      // 清除记录的最后有效目标拼图块
+      this.lastTargetTile = null
+
       // 使用nextTick确保DOM更新后再清除touchedTile
       this.$nextTick(() => {
         this.touchedTile = null
@@ -315,10 +365,12 @@ export default {
 
     // 获取指定位置上的拼图块
     getTileAtPosition(row, col) {
+      console.log('15 getTileAtPosition')
       return this.tiles.find(t => t.currentRow === row && t.currentCol === col)
     },
 
     swapTiles(tile1, tile2) {
+      console.log('16 swapTiles')
       const tempRow = tile1.currentRow
       const tempCol = tile1.currentCol
 
@@ -330,6 +382,7 @@ export default {
     },
 
     checkWin() {
+      console.log('17 checkWin')
       return this.tiles.every(tile =>
         tile.currentRow === tile.originalRow &&
         tile.currentCol === tile.originalCol
@@ -337,12 +390,12 @@ export default {
     },
 
     handleWin() {
+      console.log('18 handleWin')
       this.isWin = true
-      this.winCountdown = 3
-      this.startWinCountdown()
     },
 
     getTileStyle(tile) {
+      console.log('19 getTileStyle')
       return {
         width: this.tileSize + 'px',
         height: this.tileSize + 'px',
@@ -355,6 +408,7 @@ export default {
     },
 
     nextLevel() {
+      console.log('20 nextLevel')
       // 生成新的随机图片URL
       const randomSeed = Math.random().toString(36).substring(7)
       this.imageSrc = `https://picsum.photos/600/600?random=${randomSeed}`
@@ -362,6 +416,7 @@ export default {
     },
 
     startWinCountdown() {
+      console.log('21 startWinCountdown')
       this.winCountdownInterval = setInterval(() => {
         this.winCountdown--
         if (this.winCountdown <= 0) {
@@ -372,6 +427,7 @@ export default {
     },
 
     stopWinCountdown() {
+      console.log('22 stopWinCountdown')
       if (this.winCountdownInterval) {
         clearInterval(this.winCountdownInterval)
         this.winCountdownInterval = null
@@ -379,6 +435,7 @@ export default {
     },
 
     closeModal() {
+      console.log('23 closeModal')
       this.isWin = false
     }
   }
@@ -613,6 +670,19 @@ export default {
   border-radius: 0;
 }
 
+.tile.no-pointer-events {
+  pointer-events: none;
+  cursor: default;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  border-radius: 22px;
+}
+
 .win-modal {
   position: fixed;
   bottom: 50px;
@@ -626,6 +696,14 @@ export default {
   animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(20px);
   border: 3px solid rgba(255, 255, 255, 0.9);
+}
+
+@media (max-width: 768px) {
+  .win-modal {
+    bottom: 20px;
+    padding: 20px 30px;
+    max-width: 90%;
+  }
 }
 
 @keyframes slideUp {
@@ -654,6 +732,13 @@ export default {
   letter-spacing: 1px;
 }
 
+@media (max-width: 768px) {
+  .modal-content h2 {
+    font-size: 1.2em;
+    margin-bottom: 15px;
+  }
+}
+
 .play-again-btn {
   padding: 14px 40px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -667,6 +752,13 @@ export default {
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
   letter-spacing: 0.5px;
   text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .play-again-btn {
+    padding: 10px 25px;
+    font-size: 14px;
+  }
 }
 
 .play-again-btn:hover {
