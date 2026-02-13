@@ -71,7 +71,7 @@ export default {
   name: 'PuzzleGame',
   data() {
     return {
-      difficulty: 5,
+      difficulty: 3,
       tiles: [],
       isWin: false,
       imageSrc: '',
